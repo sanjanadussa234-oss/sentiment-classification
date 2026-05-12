@@ -1,0 +1,12 @@
+tensorflow
+numpy
+pandas
+matplotlib
+scikit-learn
+nltk
+fastapi
+uvicorn
+mlflow
+python-multipart
+pydantic
+wordcloud
