@@ -21,3 +21,10 @@ print("\nColumns:")
 print(val_df.columns)
 print("\nShape:")
 print(val_df.shape)
+
+
+import pandas as pd
+
+df = pd.read_csv("data/predictions/predictions.csv")
+print(df.columns)
+print(df.head())
