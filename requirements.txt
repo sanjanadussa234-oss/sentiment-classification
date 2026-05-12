@@ -10,3 +10,4 @@ mlflow
 python-multipart
 pydantic
 wordcloud
+tensorflow
