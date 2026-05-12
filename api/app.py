@@ -3,7 +3,6 @@ import re
 import pickle
 import numpy as np
 import pandas as pd
-
 from datetime import datetime
 
 from fastapi import FastAPI
@@ -13,33 +12,37 @@ from tensorflow.keras.models import load_model
 from tensorflow.keras.preprocessing.sequence import pad_sequences
 
 # -----------------------------------
+# BASE DIRECTORY (IMPORTANT FIX)
+# -----------------------------------
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# -----------------------------------
 # CREATE LOG DIRECTORY
 # -----------------------------------
 
-os.makedirs(
-    "logs",
-    exist_ok=True
-)
+LOG_DIR = os.path.join(BASE_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
 
 # -----------------------------------
 # LOAD MODEL
 # -----------------------------------
 
-model = load_model(
-    "models/best_sentiment_model.keras"
-)
+MODEL_PATH = os.path.join(BASE_DIR, "models", "best_sentiment_model.keras")
+TOKENIZER_PATH = os.path.join(BASE_DIR, "models", "tokenizer.pkl")
+LABEL_ENCODER_PATH = os.path.join(BASE_DIR, "models", "label_encoder.pkl")
 
+model = load_model(MODEL_PATH)
 print("Model Loaded")
+
+# warm-up (important for first request speed)
+_ = model.predict(np.zeros((1, 100)))
 
 # -----------------------------------
 # LOAD TOKENIZER
 # -----------------------------------
 
-with open(
-    "models/tokenizer.pkl",
-    "rb"
-) as f:
-
+with open(TOKENIZER_PATH, "rb") as f:
     tokenizer = pickle.load(f)
 
 print("Tokenizer Loaded")
@@ -48,11 +51,7 @@ print("Tokenizer Loaded")
 # LOAD LABEL ENCODER
 # -----------------------------------
 
-with open(
-    "models/label_encoder.pkl",
-    "rb"
-) as f:
-
+with open(LABEL_ENCODER_PATH, "rb") as f:
     label_encoder = pickle.load(f)
 
 print("Label Encoder Loaded")
@@ -61,9 +60,7 @@ print("Label Encoder Loaded")
 # FASTAPI APP
 # -----------------------------------
 
-app = FastAPI(
-    title="Customer Sentiment API"
-)
+app = FastAPI(title="Customer Sentiment API")
 
 # -----------------------------------
 # INPUT SCHEMA
@@ -73,28 +70,22 @@ class TextRequest(BaseModel):
     text: str
 
 # -----------------------------------
+# CONFIG
+# -----------------------------------
+
+MAX_LEN = 100  # MUST match training
+
+# -----------------------------------
 # TEXT CLEANING
 # -----------------------------------
 
-MAX_LEN = 150
-
 def clean_text(text):
-
     text = str(text).lower()
 
-    # remove urls
     text = re.sub(r"http\S+", "", text)
-
-    # remove mentions
     text = re.sub(r"@\w+", "", text)
-
-    # remove hashtags symbol only
     text = re.sub(r"#", "", text)
-
-    # keep alphabets only
     text = re.sub(r"[^a-zA-Z\s]", "", text)
-
-    # remove extra spaces
     text = re.sub(r"\s+", " ", text).strip()
 
     return text
@@ -104,32 +95,23 @@ def clean_text(text):
 # -----------------------------------
 
 @app.get("/")
-
 def home():
-
-    return {
-        "message": "Customer Sentiment API Running Successfully"
-    }
+    return {"message": "Customer Sentiment API Running Successfully"}
 
 # -----------------------------------
 # PREDICTION ROUTE
 # -----------------------------------
 
 @app.post("/predict")
-
 def predict_sentiment(request: TextRequest):
 
-    # Clean input text
-    cleaned_text = clean_text(
-        request.text
-    )
+    # Clean text
+    cleaned_text = clean_text(request.text)
 
-    # Convert text to sequence
-    sequence = tokenizer.texts_to_sequences(
-        [cleaned_text]
-    )
+    # Tokenize
+    sequence = tokenizer.texts_to_sequences([cleaned_text])
 
-    # Pad sequence
+    # Pad
     padded_sequence = pad_sequences(
         sequence,
         maxlen=MAX_LEN,
@@ -138,26 +120,19 @@ def predict_sentiment(request: TextRequest):
     )
 
     # Predict
-    prediction_probs = model.predict(
-        padded_sequence
-    )
+    prediction_probs = model.predict(padded_sequence, verbose=0)
 
-    predicted_class = np.argmax(
-        prediction_probs,
-        axis=1
-    )[0]
+    predicted_class = np.argmax(prediction_probs, axis=1)[0]
 
-    sentiment = label_encoder.inverse_transform(
-        [predicted_class]
-    )[0]
+    sentiment = label_encoder.inverse_transform([predicted_class])[0]
 
-    confidence = float(
-        np.max(prediction_probs)
-    )
+    confidence = float(np.max(prediction_probs))
 
     # -----------------------------------
-    # CREATE LOG ENTRY
+    # LOGGING (SAFE FOR HF)
     # -----------------------------------
+
+    log_file = os.path.join(LOG_DIR, "prediction_logs.csv")
 
     log_data = {
         "timestamp": [str(datetime.now())],
@@ -169,27 +144,16 @@ def predict_sentiment(request: TextRequest):
 
     log_df = pd.DataFrame(log_data)
 
-    log_file = "logs/prediction_logs.csv"
-
-    # Append logs
-    if os.path.exists(log_file):
-
-        log_df.to_csv(
-            log_file,
-            mode='a',
-            header=False,
-            index=False
-        )
-
-    else:
-
-        log_df.to_csv(
-            log_file,
-            index=False
-        )
+    try:
+        if os.path.exists(log_file):
+            log_df.to_csv(log_file, mode='a', header=False, index=False)
+        else:
+            log_df.to_csv(log_file, index=False)
+    except Exception as e:
+        print("Logging failed:", e)
 
     # -----------------------------------
-    # RETURN RESPONSE
+    # RESPONSE
     # -----------------------------------
 
     return {

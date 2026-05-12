@@ -1,13 +1,14 @@
-FROM python:3.10
+FROM tensorflow/tensorflow:2.15.0
 
 WORKDIR /app
 
 COPY requirements.txt .
 
-RUN pip install --default-timeout=200 --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 8000
+EXPOSE 7860
 
-CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "7860"]
